@@ -1,12 +1,25 @@
----
-layout: default
----
+## 1. 提供的功能
+主要解决两个问题：什么时候调频调压，怎么调频调压。
+功能抽象出几个模块：
+cpufreq driver提供调频调压的机制，这一层可以为上层规避掉硬件信息，提供统一的向上接口。
+cpufreq governor提供不同的策略
+cpufreq core对通用的调频逻辑做抽象，为上层提供功能、接口封装，对下层调用抽象封装的硬件控制接口
 
-# Linux动态频率调节系统CPUFreq之一：概述
-随着技术的发展，我们对CPU的处理能力提出了越来越高的需求，芯片厂家也对制造工艺不断地提升。现在的主流PC处理器的主频已经在3GHz左右，就算是智能手机的处理器也已经可以工作在1.5GHz以上，可是我们并不是时时刻刻都需要让CPU工作在最高的主频上，尤其是移动设备和笔记本电脑，大部分时间里，CPU其实工作在轻负载状态下，我们知道：主频越高，功耗也越高。为了节省CPU的功耗和减少发热，我们有必要根据当前CPU的负载状态，动态地提供刚好足够的主频给CPU。在Linux中，内核的开发者定义了一套框架模型来完成这一目的，它就是CPUFreq系统。
+## 2. 框架
+![Octocat](https://nclovestars.github.io/images/Pasted image 20230215095441.png)
 
-## 软件架构
-通过上一节的介绍，我们可以大致梳理出CPUFreq系统的构成和工作方式。首先，CPU的硬件特性决定了这个CPU的最高和最低工作频率，所有的频率调整数值都必须在这个范围内，它们用cpuinfo_xxx_freq来表示。然后，我们可以在这个范围内再次定义出一个软件的调节范围，它们用scaling_xxx_freq来表示，同时，根据具体的硬件平台的不同，我们还需要提供一个频率表，这个频率表规定了cpu可以工作的频率值，当然这些频率值必须要在cpuinfo_xxx_freq的范围内。有了这些频率信息，CPUFreq系统就可以根据当前cpu的负载轻重状况，合理地从频率表中选择一个合适的频率供cpu使用，已达到节能的目的。至于如何选择频率表中的频率，这个要由不同的governor来实现，目前的内核版本提供了5种governor供我们选择。选择好适当的频率以后，具体的频率调节工作就交由scaling_driver来完成。CPUFreq系统把一些公共的逻辑和接口代码抽象出来，这些代码与平台无关，也与具体的调频策略无关，内核的文档把它称为CPUFreq Core（/Documents/cpufreq/core.txt）。另外一部分，与实际的调频策略相关的部分被称作cpufreq_policy，cpufreq_policy又是由频率信息和具体的governor组成，governor才是具体策略的实现者，当然governor需要我们提供必要的频率信息，governor的实现最好能做到平台无关，与平台相关的代码用cpufreq_driver表述，它完成实际的频率调节工作。最后，如果其他内核模块需要在频率调节的过程中得到通知消息，则可以通过cpufreq notifiers来完成。由此，我们可以总结出CPUFreq系统的软件结构如下：
+-   cpufreq core：是cpufreq framework的核心模块，和kernel其它framework类似，主要实现三类功能：
+	- 对上，以sysfs的形式向用户空间提供统一的接口，以notifier的形式向其它driver提供频率变化的通知；
+	- 对下，提供CPU频率和电压控制的驱动框架，方便底层driver的开发；同时，提供governor框架，用于实现不同的频率调整机制；
+	- 内部，封装各种逻辑，实现所需功能。这些逻辑主要围绕struct cpufreq_policy、struct cpufreq_driver和struct cpufreq_governor三个数据结构进行。
 
 
-[back](./../../)
+-   cpufreq governor：负责调频调压的各种策略，每种governor计算频率的方式不同，根据提供的频率范围和参数(阈值等)，计算合适的频率。
+	-   userspace：用户通过操作scaling_setspeed文件节点操作频率及电压的调整。
+	-   ondemand：根据CPU当前的使用率，动态调整cpu的频率及电压。Sched通过调用ondemand注册进来的回调函数来触发负载的估算，它以一定时间间隔对系统负载进行采样，按需调整cpu的频率及电压，若当前cpu的利用率超过设定的阈值，就会立即调整到最大的频率。调频速度快，但是不够精确。
+	-   conservative：类似ondemand，在调频调节时会平滑一下，以防最大、最小频率之间来回跳变。调整的时候会以一定步长调整，而不是直接调整到目标值。同时会周期的计算系统负载，用以决定调到什么频率。
+	-   schedutil：通过将自己的调频策略注册到hook，在负载发生变化的时候，会调用该hook，此时就可以进行调频决策或执行调频动作。前面的调频策略都是周期采样计算cpu负载有滞后性，精度也有限，而schedutil可以使用PELT(per entity load tracking)或者WALT(window assist load tracking)准确的计算task的负载。如果支持fast_switch的功能，可以在中断上下文直接进行调频。
+
+-   cpufreq driver：负责平台相关的调频调压机制的实现，基于cpu subsystem driver、OPP、clock driver、regulator driver等模块，提供对CPU频率和电压的控制。是平台驱动开发工程师需要关注的结构。
+
+-   cpufreq stats：负责调频信息和各频点运行时间等统计，提供每个cpu的cpufreq有关的统计信息。
