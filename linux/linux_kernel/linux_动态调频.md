@@ -6,7 +6,7 @@ cpufreq governor提供不同的策略
 cpufreq core对通用的调频逻辑做抽象，为上层提供功能、接口封装，对下层调用抽象封装的硬件控制接口
 
 ## 2. 框架
-![Octocat](https://nclovestars.github.io/images/Pasted image 20230215095441.png)
+![Octocat](https://nclovestars.github.io/images/20230215095441.png)
 
 -   cpufreq core：是cpufreq framework的核心模块，和kernel其它framework类似，主要实现三类功能：
 	- 对上，以sysfs的形式向用户空间提供统一的接口，以notifier的形式向其它driver提供频率变化的通知；
