@@ -81,6 +81,7 @@ enableRobotsTXT = true
   footer = "The Day"
   dateFormat = "2 January, 2006"
   togglePreviousAndNextButtons = true
+  enableEmoji = true
   
   [markup]
   [markup.tableOfContents]
